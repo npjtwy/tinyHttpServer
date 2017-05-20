@@ -8,32 +8,32 @@
 #include <iostream>
 #include <mysql/mysql.h>
 
-using namespace std;
+
 namespace mysqlhelper {
 
 //数据库异常类
-struct MysqlHelper_Exception // public TC_Exception
+struct MysqlHelper_Exception
 {
-    MysqlHelper_Exception(const string &sBuffer):
-        errorInfo(sBuffer){} //: TC_Exception(sBuffer){}
+    MysqlHelper_Exception(const std::string &sBuffer):
+        errorInfo(sBuffer){}
     ~MysqlHelper_Exception() throw(){}
 
-    string errorInfo;
+	std::string errorInfo;
 };
 
 
 //数据库配置接口
 struct DBConf
 {
-    string host;
-    string user;
-    string passwd;
-    string database;
+	std::string host;
+	std::string user;
+	std::string passwd;
+	std::string database;
     int port;
     int flag;//客户端标识
 
     //读取配置：
-    void loadFromMap(const map<string, string> &mapParam)
+    void loadFromMap(const std::map<std::string, std::string> &mapParam)
     {
     	auto mpTmp = mapParam;
         host =      mpTmp["dbhost"];
@@ -59,16 +59,16 @@ public:
     /**
     *  构造函数.
     */
-    MsqlRecord(const map<string, string> &record);
+    MsqlRecord(const std::map<std::string, std::string> &record);
 
     /**
     * @brief 获取数据，s一般是指数据表的某个字段名
     * @param s 要获取的字段
     * @return  符合查询条件的记录的s字段名
     */
-    const string& operator[](const string &s);
+    const std::string& operator[](const std::string &s);
 protected:
-    const map<string, string> &_record;
+    const std::map<std::string, std::string> &_record;
 
 };
 
@@ -87,7 +87,7 @@ public:
          *
          * @return vector<map<string,string>>&
          */
-     vector<map<string, string> >& data() ;
+    std::vector<std::map<std::string, std::string> >& data() ;
 
     /**
          * 数据的记录条数
@@ -109,7 +109,7 @@ public:
 
 
 protected:
-    vector<map<string, string> > _data;
+	std::vector<std::map<std::string, std::string> > _data;
 };
 class MysqlHelper
 {
@@ -126,15 +126,15 @@ public:
        * @param iUnixSocket  socket
        * @param iFlag        客户端标识
        */
-    MysqlHelper(const string& sHost, const string& sUser = "", const string& sPasswd = "",
-                const string& sDatabase = "", int port = 0, int iFlag = 0);
+    MysqlHelper(const std::string& sHost, const std::string& sUser = "", const std::string& sPasswd = "",
+                const std::string& sDatabase = "", int port = 0, int iFlag = 0);
     //参数为数据库配置的构造函数
     MysqlHelper(const DBConf& tcDBConf);
 
     //析构函数
     ~MysqlHelper();
-    void init(const string& sHost, const string& sUser  = "",
-              const string& sPasswd  = "", const string& sDatabase = "",
+    void init(const std::string& sHost, const std::string& sUser  = "",
+              const std::string& sPasswd  = "", const std::string& sDatabase = "",
              int port = 0, int iFlag = 0);
     void init(const DBConf & dbconf);
 
@@ -147,8 +147,8 @@ public:
     MYSQL *getMysql();
 
     //更新或者插入数据.
-    void execute(const string& sSql);
-    MysqlData queryRecord(const string& sSql);
+    void execute(const std::string& sSql);
+    MysqlData queryRecord(const std::string& sSql);
     size_t getAffectedRows();
 
     void setDefalutCharacterSet();
@@ -173,7 +173,7 @@ private:
     /**
      * 最后执行的sql
      */
-    string      _sLastSql;
+    std::string      _sLastSql;
 
 };
 }

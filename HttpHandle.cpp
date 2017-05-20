@@ -5,12 +5,8 @@
  *      Author: yang
  */
 
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+
 #include "HttpHandle.h"
-#include "MySoket.h"
 #include "log/Logger.h"
 
 
@@ -25,24 +21,42 @@ Content-Length:%d\n\n"
 
 #define EXEC "s?wd="
 
-using namespace std;
+#define MALLOCFAILED "malloc failed in "
 
-
-HttpHandle::HttpHandle(const char* recv, shared_ptr<MysqlHelper> sqlhelper) :
-		reply_content(NULL), get_command(), _sqlhelper(sqlhelper)
-{//构造函数  完成get command 的解析
-	this->setGetCommand(recv);
+HttpHandle::HttpHandle(const char* recv, std::shared_ptr<MysqlHelper> sqlhelper, int *cli_st) :
+		reply_content(NULL), contentbuf(NULL), _method(),_method_content(),
+		_sqlhelper(sqlhelper), _cli_st(cli_st), post_var()
+{
+//构造函数  完成 http header 的解析
+	post_content_length = 0;
+	message_len = 0;
+	this->setMethod(recv);
 }
 HttpHandle::~HttpHandle()
 {
-	free(this->reply_content);
+	if (this->reply_content) {
+		free(this->reply_content);
+		this->reply_content = NULL;
+	}
+	if (this->contentbuf) {
+		free(contentbuf);
+		this->contentbuf = NULL;
+	}
 }
 
-
-int HttpHandle::setReplyContent()
+const std::string& HttpHandle::getMethod() const
 {
-	return this->setReplyContent(&this->reply_content);
+	return this->_method;
 }
+
+const char *HttpHandle::getReplyContent() const {
+	return this->reply_content;
+}
+
+size_t HttpHandle::getMessage_len() const {
+	return message_len;
+}
+
 
 /*
  * http get 内容
@@ -59,127 +73,277 @@ int HttpHandle::setReplyContent()
  6.userName=new_andy&password=new_andy
  */
 
-
-void HttpHandle::setGetCommand(const char *recv)
+void HttpHandle::setMethod(const char *recv)
 {
-	string header(recv);
+	std::string header(recv);
 
 	auto beg = header.find_first_of(' ', 0);//找到第一个' '位置
-	beg += 2;//前进两个位置 判断get请求是否为空
+
+	//获取method
+	for(std::string::size_type it = 0; it != beg; it++)
+		_method.push_back(header[it]);
+
+	beg += 2;//前进两个位置 判断请求是否为空
 	if (header[beg] == ' ')
-		return;
+		;
 	else
 	{
 		while(header[beg] != ' ')
 		{
-			this->get_command.push_back(header[beg++]);
+			this->_method_content.push_back(header[beg++]);
 		}
 	}
+
+	if(_method == "POST") {
+		auto found = header.find("Content-Length");
+		if(found != std::string::npos)
+		{
+			char len[10];
+			int i = 0;
+			found += 16;    //定位到content-length的第一位数字
+			for(i, found; header[found] != '\n'; found++ ,i++)
+				len[i] = header[found];
+
+			len[i] = '\0';
+			this->post_content_length = (size_t)atoi(len);
+		}
+		auto found_post_var = header.find("color");
+		if(found != std::string::npos)
+		{
+			found_post_var += 6;
+			for(found_post_var; header[found_post_var] != '\n'; found_post_var++)
+				post_var.push_back(header[found_post_var]);
+		}
+	}
+
 }
 
-int HttpHandle::setReplyContent(char** replyContent)
-{
-	int iContentLen = 0;
-	char *contentbuf = NULL;
-	if (get_command.empty()) //GET请求后面为空，得到默认页面内容图
+
+void HttpHandle::handleRequest() {
+	if (this->_method == "GET")
+		handleGET();
+	else if (this->_method == "POST")
+		handlePOST();
+	else
+		return;
+}
+
+void HttpHandle::handlePOST() {
+
+	char *templetcontent;
+	size_t len;
+	//获取post模板页面内容
+	if ((len = findRequestFile("../www/postReply.html")) == 0)
+		return ;
+
+	if ((templetcontent = (char *) malloc(len+1)) == NULL)
+		Logger::LogDebug(MALLOCFAILED + std::string(__FUNCTION__));
+
+	memcpy(templetcontent, contentbuf, len);
+	templetcontent[len] = '\0';
+
+	free(contentbuf);
+	if ((contentbuf = (char *) malloc(BUFSIZ)) == NULL)
+		Logger::LogDebug(MALLOCFAILED + std::string(__FUNCTION__));
+
+	sprintf(this->contentbuf, templetcontent, this->post_var.c_str());
+
+	if (templetcontent)
+		free(templetcontent);
+
+	fillReply(strlen(this->contentbuf));
+}
+
+
+void HttpHandle::handleGET() {
+	size_t len = 0;
+	if (_method_content.empty()) //后面为空，得到默认页面内容
 	{
-		iContentLen = getFileContent("../www/default.html", &contentbuf);
+		len = findRequestFile("index.html");
 	} else
 	{
-		if (strncmp(get_command.c_str(), EXEC, strlen(EXEC)) == 0) //GET请求后面为s?wd=
+		if (strncmp(_method_content.c_str(), EXEC, strlen(EXEC)) == 0) //GET请求后面为s?wd= 表示查询
 		{
 			char query[1024];
 			//得到s?wd=字符串后面的转义字符内容  生成数据库查询语句的一部分
-			httpStr2Stdstr(get_command.c_str(),strlen(EXEC), query);
-
-			iContentLen = getDynamicContent(string(query), &contentbuf, this->_sqlhelper);
-
-		} else
+			httpStr2Stdstr(_method_content.c_str(),strlen(EXEC), query);
+			len = getSqlReply(std::string(query));
+		}
+		else
 		{
-			//动态设置http请求内容,query为条件，buf为动态内容
-			iContentLen = getFileContent(get_command, &contentbuf);
+			//GET 后面是一个文件
+			len = findRequestFile(_method_content);
 		}
 	}
+	//将回复内容填到reply_content
+	fillReply(len);
 
-	//生成回复消息
+}
 
-	if (iContentLen > 0)
-	{
-//		char headbuf[1024];
-//		memset(headbuf, 0, sizeof(headbuf));
-//		sprintf(headbuf, HEAD, getFileType(this->get_command), iContentLen); //设置消息头
-//
-//		replyContent = string(headbuf) + replyContent + string(TAIL);
-//		printf("headbuf:\n%s", headbuf);
-//		return replyContent.size();//返回消息总长度
 
-		char headbuf[1024];
-		memset(headbuf, 0, sizeof(headbuf));
-		sprintf(headbuf, HEAD, getFileType(this->get_command), iContentLen); //设置消息头
-		size_t iheadlen = strlen(headbuf);//得到消息头长度
-		size_t itaillen = strlen(TAIL);//得到消息尾长度
-		size_t isumlen = iheadlen + iContentLen + itaillen;//得到消息总长度
-		*replyContent = (char*)malloc(isumlen);//根据消息总长度，动态分配内存
-		char *tmp = *replyContent;
-		memcpy(tmp, headbuf, iheadlen); //安装消息头
-		memcpy(&tmp[iheadlen], contentbuf, static_cast<size_t>(iContentLen)); //安装消息体
-		memcpy(&tmp[iheadlen + iContentLen], TAIL, itaillen); //安装消息尾
 
-		printf("reply content:\n%s", *replyContent);
+//根据sql语句生成回复
+size_t HttpHandle::getSqlReply(std::string query) {
 
-		if (contentbuf)
-			free(contentbuf);
-		return  static_cast<int>(isumlen);//返回消息总长度
-	}
-	else
+
+	char *templetcontent;
+	size_t len;
+	//获取模板页面内容
+	if ((len = findRequestFile("templet.html")) == 0)
 		return 0;
 
+	//将content内容拷贝给 templecontent
+	//templatecontent将用作填充字符串的模板
+	//contentbuf将接受填充过的值 因此要重新分配内存
+	if ((templetcontent = (char *) malloc(len+1)) == NULL)
+		Logger::LogDebug(MALLOCFAILED + std::string(__FUNCTION__));
+	memcpy(templetcontent, contentbuf, len);
+
+	templetcontent[len] = '\0';
+
+	free(contentbuf);
+	if ((contentbuf = (char *) malloc(BUFSIZ)) == NULL)
+		Logger::LogDebug(MALLOCFAILED + std::string(__FUNCTION__));
+
+	std::string body;//查询结果
+	if (!query.empty()) {
+
+		//生成sql查询语句
+		std::string sqlquery = "select * from baidu where name like \"%" + query + "%\"";
+
+		MysqlData sql_data;
+		//执行sql查询
+		try {
+			sql_data = this->_sqlhelper->queryRecord(sqlquery);
+		} catch (...) {
+			Logger::LogDebug("sql query in " + std::string(__FUNCTION__));
+		}
+
+		if (!sql_data.size()) {
+			body = "抱歉，没有查询结果";
+		} else {
+			//生成链接：
+			char *url;
+			if ((url = (char *) malloc(1024)) == NULL)
+				Logger::LogDebug(MALLOCFAILED + std::string(__FUNCTION__));
+
+			memset(url, 0, strlen(url));
+
+			const char *href = "<a href=\"%s\">%s</a>";
+			sprintf(url, href, sql_data[0]["url"].c_str(), sql_data[0]["name"].c_str());
+
+			//body为查询得到的内容
+			body = sql_data[0]["description"] + " " + std::string(url);
+			if (url)
+				free(url);
+		}
+	}
+	else {
+		body = "抱歉，没有查询结果";
+	}
+
+	const  char* bodystr = body.c_str();
+
+	//将查询结果写入buff 其中 query和body将填充templet.html中的两个%s
+	sprintf(this->contentbuf, templetcontent, query.c_str(), bodystr);
+
+	if (templetcontent)
+		free(templetcontent);
+
+	return strlen(this->contentbuf);
 }
 
-const char* HttpHandle::getReplyContent() const
-{
-	return reply_content;
+
+//根据请求内容返回相应文件
+size_t HttpHandle::getFileContent(FILE *fd,struct stat *t) {
+
+	if ((this->contentbuf = (char *)malloc(static_cast<size_t>(t->st_size))) == NULL)
+		Logger::LogDebug(MALLOCFAILED + std::string(__FUNCTION__));
+
+	memset(contentbuf, 0, strlen(contentbuf));
+	if (fread(contentbuf, static_cast<size_t>(t->st_size), 1, fd) == 0)//将文件读取到buf
+	{
+		Logger::LogDebug("fread error in " + std::string(__FUNCTION__));
+		return 0;
+	}
+	return static_cast<size_t >(t->st_size);
 }
 
+size_t HttpHandle::findRequestFile(std::string filename) {
 
-
-const string& HttpHandle::getGetCommand() const
-{
-	return this->get_command;
-}
-
-int HttpHandle::getFileContent(string filename, char **buf) {
+	filename = "../www/" + filename;
 
 	struct stat t;
 	memset(&t, 0, sizeof(t));
+	FILE *fd = fopen(filename.c_str(), "rb");
+	size_t ret = 0;
 
-	filename  = "../www/" + filename;
-
-	//根据文件名获取内容
-	FILE *fd = fopen(filename.c_str(), "rb");//从只读方式打开参数filename指定的文件
-	if (fd)	//如果打开成功
-	{
-
-		stat(filename.data(), &t);
-		*buf = (char*)malloc(static_cast<size_t>(t.st_size));//根据文件大小，动态分配内存buf
-		fread(*buf, static_cast<size_t>(t.st_size), 1, fd);//将文件读取到buf
-		fclose(fd);
-		return static_cast<int>(t.st_size);
-	} else
-	{
-
-		Logger::LogDebug("open file " + filename + " failed in HttpHandle::getFileContent: " + std::string(strerror(errno)));
-		return 0;
+	if (stat(filename.c_str(), &t) < 0) {
+		//文件不存在 返回  404
+		//只读方式打开参数filename指定的文件)
+		Logger::LogDebug(filename + ": file not found return 404");
+		filename = "../www/404.html";
+		fd = fopen(filename.c_str(), "rb");
+		stat(filename.c_str(), &t);
 	}
+	else if (fd  == NULL)
+	{
+		//文件打开失败 返回503
+		Logger::LogDebug(filename + ": Can't open file , get 503");
+		filename = "../www/503.html";
+		stat(filename.c_str(), &t);
+		fd = fopen(filename.c_str(), "rb");
+	}
+	else {
+		//正常返回所请求的文件
+		fd = fopen(filename.c_str(), "rb");
+
+	}
+	ret  = getFileContent(fd, &t);
+
+	if(fd)
+		fclose(fd);
+	return ret;
 }
 
-const char *HttpHandle::getFileType(string &filename) {
+void HttpHandle::fillReply(size_t iContentLen) {
+
+	if ( iContentLen == 0) {
+		Logger::LogDebug("contentbuf is empty");
+		return; //没有获取到内容
+	}
+
+	char headbuf[1024];
+	memset(headbuf, 0, sizeof(headbuf));
+
+	sprintf(headbuf, HEAD, getFileType(this->_method_content), static_cast<int>(iContentLen)); //设置消息头
+
+	size_t iheadlen = strlen(headbuf);//得到消息头长度
+	size_t itaillen = strlen(TAIL);//得到消息尾长度
+	size_t isumlen = iheadlen + iContentLen + itaillen;//得到消息总长度
+
+	if ((this->reply_content = (char*)malloc(isumlen + 1)) == NULL)//根据消息总长度，动态分配内存
+		Logger::LogDebug(MALLOCFAILED);
+	memset(reply_content, 0, isumlen);
+
+	memcpy(reply_content, headbuf, iheadlen); //安装消息头
+	memcpy(&reply_content[iheadlen], contentbuf, static_cast<size_t>(iContentLen)); //安装消息体
+	memcpy(&reply_content[iheadlen + iContentLen], TAIL, itaillen); //安装消息尾
+
+	reply_content[isumlen + 1] = '\0';
+	this->message_len = isumlen;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+const char *HttpHandle::getFileType(std::string &filename) {
 	////////////得到文件扩展名///////////////////
 	auto len = filename.size();
 
 	auto pos = filename.find_first_of('.', 0);
 
-	string sExt;
+	std::string sExt;
 	pos++;
 
 	while(pos < len)
@@ -315,6 +479,12 @@ void HttpHandle::httpStr2Stdstr(const char *httpstr, size_t pos ,char * stdstr)
 	int index = 0;
 	size_t i;
 	//httpstr = %E4%BC%A0%E6%99%BA
+	if (strlen(httpstr) <= 0)
+	{
+		*stdstr ='\0';
+		return;
+	}
+
 	for (i = 0; i < strlen(httpstr); i++)
 	{
 		if (httpstr[i] == '%')
@@ -327,62 +497,10 @@ void HttpHandle::httpStr2Stdstr(const char *httpstr, size_t pos ,char * stdstr)
 		}
 		index++;
 	}
+	stdstr[index] = '\0';
 }
+/////////////////////////////////////////////////////////////////////////////////////////////
 
-int HttpHandle::getDynamicContent(string query, char **buff, shared_ptr<MysqlHelper>sqlHelper) {
-	char* templetcontent;
 
-	//获取模板页面内容
-
-	//int getFileContent(string filename, string& buf)
-	if (getFileContent("templet.html", &templetcontent) == 0)
-		return 0;
-//
-	*buff = (char*)malloc(BUFSIZ);
-//	char *body = NULL;
-	string body;
-	//生成sql查询语句
-	string sqlquery = "select * from baidu where name like \"%"+query+"%\"";
-
-	MysqlData sql_data;
-	//执行sql查询
-	try {
-		 sql_data = sqlHelper->queryRecord(sqlquery);
-	}catch (...)
-	{
-		Logger::LogDebug("sql query in " + std::string(__FUNCTION__));
-	}
-
-	if (!sql_data.size())
-	{
-		body =  "抱歉，没有查询结果";
-	}
-	else
-	{
-		//<a href="http://192.168.1.254">新 闻</a>
-		//生成链接：
-		char *url = (char*)malloc(256);
-		bzero(url, strlen(url));
-		const char *href = "<a href=\"%s\">%s</a>";
-		sprintf(url, href, sql_data[0]["url"].c_str(), sql_data[0]["name"].c_str());
-
-		//body为查询得到的description的内容
-		body = sql_data[0]["description"] + " " + std::string(url);
-
-		FILE *fp = fopen("log","a+");
-		if (!fp)
-			perror("fopen in getDynamicContent");
-		fwrite(body.c_str(),1,body.size(), fp);
-		fclose(fp);
-
-		free(url);
-	}
-
-	//将查询结果写入buff 其中 query和body将填充templet.html中的两个%s
-	sprintf(*buff, templetcontent, query.c_str(), body.c_str());
-	if(templetcontent)
-		free(templetcontent);
-	return static_cast<int>(strlen(*buff));
-}
 
 

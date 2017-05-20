@@ -5,8 +5,8 @@ mysqlhelper::MysqlHelper::MysqlHelper() : _bConnected(false)
     _pstMql = mysql_init(NULL);
 }
 
-mysqlhelper::MysqlHelper::MysqlHelper(const string &sHost, const string &sUser,
-                                      const string &sPasswd, const string &sDatabase,
+mysqlhelper::MysqlHelper::MysqlHelper(const std::string &sHost, const std::string &sUser,
+                                      const std::string &sPasswd, const std::string &sDatabase,
                                       int port, int iFlag)
 {
     this->init(sHost, sUser, sPasswd, sDatabase, port, iFlag);
@@ -31,8 +31,8 @@ mysqlhelper::MysqlHelper::~MysqlHelper()
 }
 
 //初始化数据库配置文件
-void mysqlhelper::MysqlHelper::init(const string &sHost, const string &sUser,
-                                    const string &sPasswd, const string &sDatabase,
+void mysqlhelper::MysqlHelper::init(const std::string &sHost, const std::string &sUser,
+                                    const std::string &sPasswd, const std::string &sDatabase,
                                     int port, int iFlag)
 {
     _dbConf.host =       sHost;
@@ -65,7 +65,7 @@ void mysqlhelper::MysqlHelper::connect()
     {
         //连接失败抛出异常
         throw MysqlHelper_Exception("[MysqlHelper::connect]: mysql_real_connect: " +
-                                    string(mysql_error(_pstMql)));
+                                    std::string(mysql_error(_pstMql)));
     }
 
     std::cout << "数据库连接成功" << std::endl;
@@ -85,7 +85,7 @@ void mysqlhelper::MysqlHelper::disconnect()
 
 
 //执行sql语句
-void mysqlhelper::MysqlHelper::execute(const string &sSql)
+void mysqlhelper::MysqlHelper::execute(const std::string &sSql)
 {
     /**
     没有连上, 连接数据库
@@ -116,7 +116,7 @@ void mysqlhelper::MysqlHelper::execute(const string &sSql)
        const char *err_str = mysql_error(_pstMql);
        std::cout << err_str << std::endl;
         throw MysqlHelper_Exception("[MysqlHelper::execute]: mysql_query: [ " + sSql+" ] :" +
-                                    string(mysql_error(_pstMql))+"\n");
+                                    std::string(mysql_error(_pstMql))+"\n");
     }
 }
 
@@ -139,7 +139,7 @@ MYSQL *mysqlhelper::MysqlHelper::getMysql()
 }
 
 //查询结果的保存
-mysqlhelper::MysqlData mysqlhelper::MysqlHelper::queryRecord(const string &sSql)
+mysqlhelper::MysqlData mysqlhelper::MysqlHelper::queryRecord(const std::string &sSql)
 {
     MysqlData   data;
 
@@ -151,10 +151,10 @@ mysqlhelper::MysqlData mysqlhelper::MysqlHelper::queryRecord(const string &sSql)
     if(pstRes == NULL)
     {
         throw MysqlHelper_Exception("[MysqlHelper::queryRecord]: mysql_store_result: " +
-                                    sSql + " : " + string(mysql_error(_pstMql)));
+                                    sSql + " : " + std::string(mysql_error(_pstMql)));
     }
 
-    vector<string> vtFields;//存储字段
+    std::vector<std::string> vtFields;//存储字段
     MYSQL_FIELD *field;
     //获取字段
     while((field = mysql_fetch_field(pstRes)))
@@ -162,7 +162,7 @@ mysqlhelper::MysqlData mysqlhelper::MysqlHelper::queryRecord(const string &sSql)
         vtFields.push_back(field->name);
     }
 
-    map<string, string> mpRow;
+    std::map<std::string, std::string> mpRow;
     MYSQL_ROW stRow;
 
     //逐行保存查询结果
@@ -176,7 +176,7 @@ mysqlhelper::MysqlData mysqlhelper::MysqlHelper::queryRecord(const string &sSql)
             if(stRow[i])
             {
                 //将每个字段和其所对应的内容存入map
-                mpRow[vtFields[i]] = string(stRow[i], lengths[i]);
+                mpRow[vtFields[i]] = std::string(stRow[i], lengths[i]);
             }
             else
             {
@@ -195,11 +195,11 @@ mysqlhelper::MysqlData mysqlhelper::MysqlHelper::queryRecord(const string &sSql)
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-mysqlhelper::MsqlRecord::MsqlRecord(const map<string, string> &record):_record(record){}
+mysqlhelper::MsqlRecord::MsqlRecord(const std::map<std::string, std::string> &record):_record(record){}
 
-const string& mysqlhelper::MsqlRecord::operator[](const string &s)
+const std::string& mysqlhelper::MsqlRecord::operator[](const std::string &s)
 {
-    map<string, string>::const_iterator it = _record.find(s);
+    std::map<std::string, std::string>::const_iterator it = _record.find(s);
     if(it == _record.end())
     {
         throw MysqlHelper_Exception("field '" + s + "' not exists.");
@@ -209,7 +209,7 @@ const string& mysqlhelper::MsqlRecord::operator[](const string &s)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-vector<map<string, string> >& mysqlhelper::MysqlData::data()
+std::vector<std::map<std::string, std::string> >& mysqlhelper::MysqlData::data()
 {
     return this->_data;
 }

@@ -7,12 +7,19 @@
 
 #ifndef MYSOKET_H_
 #define MYSOKET_H_
-//MySoket类 将常用socket操作封装起来 限TCP
-#include "MysqlHelper.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <unistd.h>
+#include <arpa/inet.h>
+#include <string>
 #include <memory>
+#include "MysqlHelper.h"
 
 using namespace mysqlhelper;
 

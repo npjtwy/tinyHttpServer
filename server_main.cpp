@@ -6,12 +6,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include "HttpServer.h"
-#include "MySoket.h"
-#include "MysqlHelper.h"
-#include "HttpHandle.h"
-#include <memory>
 #include "log/Logger.h"
 
 using namespace mysqlhelper;
@@ -36,8 +31,12 @@ int main(int arg, char **args)
 
 
 
-	shared_ptr<HttpServer> httpserver(new HttpServer("root", "wang", "httpserver", iport));
-	httpserver->init();
+	std::shared_ptr<HttpServer> httpserver(new HttpServer("root", "wang", "httpserver", iport));
+	if (httpserver->init() != 0){
+		Logger::LogDebug("httpserver init failed");
+		return EXIT_SUCCESS;
+
+	}
 	//1 代表进入daemon 模式, 0 不进入
 	httpserver->run(0);
 
