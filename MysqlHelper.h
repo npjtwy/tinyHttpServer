@@ -44,7 +44,6 @@ struct DBConf
 
         flag        = 0;
 
-
         if (mpTmp["dbport"] == "")
             port = 3306;
     }
@@ -62,9 +61,9 @@ public:
     MsqlRecord(const std::map<std::string, std::string> &record);
 
     /**
-    * @brief 获取数据，s一般是指数据表的某个字段名
-    * @param s 要获取的字段
-    * @return  符合查询条件的记录的s字段名
+    *  获取数据，s一般是指数据表的某个字段名
+    *  s 要获取的字段
+    * 返回符合查询条件的记录的s字段名
     */
     const std::string& operator[](const std::string &s);
 protected:
@@ -72,9 +71,9 @@ protected:
 
 };
 
-/**
-     * @brief 查询出来的mysql数据
-     */
+/*
+ * 查询出来的mysql数据
+ */
 class MysqlData
 {
 public:
@@ -82,24 +81,19 @@ public:
 	MysqlData() = default;
 	~MysqlData() = default;
 
-    /**
-         * @brief 所有数据.
-         *
-         * @return vector<map<string,string>>&
-         */
+    //获取查询的数据
     std::vector<std::map<std::string, std::string> >& data() ;
 
-    /**
-         * 数据的记录条数
-         * @return size_t
-         */
+    /*
+     * 数据的记录条数
+     */
     size_t size() const;
 
-    /**
-         * @brief 获取某一条记录.
-         * @param i  要获取第几条记录
-         * @return   MysqlRecord类型的数据，可以根据字段获取相关信息，
-         */
+	/*
+	 *  获取某一条记录.
+	 *  i  要获取第几条记录
+	 * 返回MysqlRecord类型的数据，可以根据字段获取相关信息，
+	 */
     MsqlRecord operator[](size_t i);
 
 	MysqlData(const MysqlData& rhs) ;
@@ -116,15 +110,14 @@ class MysqlHelper
 public:
     MysqlHelper();
 
-    /**
-       * @brief 构造函数.
-       * @param: sHost:主机IP
-       * @param sUser        用户
-       * @param sPasswd      密码
-       * @param sDatebase    数据库
-       * @param port         端口
-       * @param iUnixSocket  socket
-       * @param iFlag        客户端标识
+    /*
+       * 构造函数.
+       * sHost:主机IP
+       * sUser        用户
+       * sPasswd      密码
+       * sDatebase    数据库
+       * port         端口
+       * iFlag        客户端标识
        */
     MysqlHelper(const std::string& sHost, const std::string& sUser = "", const std::string& sPasswd = "",
                 const std::string& sDatabase = "", int port = 0, int iFlag = 0);
@@ -155,25 +148,17 @@ public:
 
 private:
 
-    /**
-    * 数据库指针
-    */
-    MYSQL       *_pstMql;
+	//数据库指针
+	MYSQL       *_pstMql;
 
-    /**
-    * 数据库配置
-    */
-    DBConf   _dbConf;
+	//数据库配置
+	DBConf      _dbConf;
 
-    /**
-    * 是否已经连接
-    */
-    bool        _bConnected;
+	//是否已经连接
+	bool        _bConnected;
 
-    /**
-     * 最后执行的sql
-     */
-    std::string      _sLastSql;
+	//最后执行的sql
+	std::string  _sLastSql;
 
 };
 }
